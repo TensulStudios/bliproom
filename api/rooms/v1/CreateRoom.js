@@ -1,5 +1,3 @@
-import { createClient } from "@vercel/edge-config";
-
 export const config = { runtime: "edge" };
 
 const RATE_LIMIT_WINDOW = 60_000;
@@ -46,55 +44,34 @@ export default async function handler(req) {
     });
   }
 
-  const edgeConfig = createClient(process.env["bliproom-token"]);
+  const edgeConfigId = process.env.EDGE_CONFIG_ID;
+  const vercelToken = process.env.VERCEL_API_TOKEN;
 
-  let rooms;
-  try {
-    rooms = (await edgeConfig.get("rooms")) ?? {};
-  } catch {
-    return new Response(JSON.stringify({ error: "Failed to read Edge Config" }), {
-      status: 500,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
+  const readRes = await fetch(`https://api.vercel.com/v1/edge-config/${edgeConfigId}/item/rooms`, {
+    headers: { Authorization: `Bearer ${vercelToken}` },
+  });
 
-  const nameLower = name.toLowerCase();
-  const alreadyExists = Object.values(rooms).some(
-    (room) => room.name?.toLowerCase() === nameLower
-  );
+  const rooms = readRes.ok ? ((await readRes.json()).value ?? {}) : {};
 
-  if (alreadyExists) {
+  if (Object.values(rooms).some((room) => room.name?.toLowerCase() === name.toLowerCase())) {
     return new Response(JSON.stringify({ error: "invalid", reason: "room name already exists" }), {
       status: 409,
       headers: { "Content-Type": "application/json" },
     });
   }
 
-  rooms[id] = {
-    name,
-    id,
-    author,
-    roomStore,
-    createdAt: new Date().toISOString(),
-  };
+  rooms[id] = { name, id, author, roomStore, createdAt: new Date().toISOString() };
 
-  try {
-    await fetch(`https://api.vercel.com/v1/edge-config/${process.env.EDGE_CONFIG_ID}/items`, {
-      method: "PATCH",
-      headers: {
-        Authorization: `Bearer ${process.env.VERCEL_API_TOKEN}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        items: [{ operation: "upsert", key: "rooms", value: rooms }],
-      }),
-    });
-  } catch {
-    return new Response(JSON.stringify({ error: "Failed to write to Edge Config" }), {
-      status: 500,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
+  await fetch(`https://api.vercel.com/v1/edge-config/${edgeConfigId}/items`, {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bearer ${vercelToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      items: [{ operation: "upsert", key: "rooms", value: rooms }],
+    }),
+  });
 
   return new Response(JSON.stringify({ success: true, room: rooms[id] }), {
     status: 200,
