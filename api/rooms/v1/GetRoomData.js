@@ -1,5 +1,10 @@
-import { createClient } from "@vercel/edge-config";
-
+const edgeConfig = async () => {
+  const readRes = await fetch(
+    `https://api.vercel.com/v1/edge-config/${process.env.EDGE_CONFIG_ID}/item/rooms`,
+    { headers: { Authorization: `Bearer ${process.env.VERCEL_API_TOKEN}` } }
+  );
+  return readRes.ok ? ((await readRes.json()).value ?? {}) : {};
+};
 export const config = { runtime: "edge" };
 
 export default async function handler(req) {
